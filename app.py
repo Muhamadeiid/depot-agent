@@ -239,9 +239,32 @@ elif page == "📬 Inbox Assistant":
                     st.rerun()
 
                 st.markdown("**📄 Body:**")
-                st.text_area("body", em.get("body", ""), height=150, disabled=True, label_visibility="collapsed", key=f"body_{idx}")
+                body_text = (em.get("body", "") or "").strip()
+                if body_text:
+                    st.text_area("body", body_text, height=150, disabled=True, label_visibility="collapsed", key=f"body_{idx}")
+                else:
+                    st.info("This email's body isn't cached locally — open it once in Outlook Desktop and Outlook will download the content. Attachments below still download fine.")
 
-                if em["id"] in st.session_state.inbox_attachments:
+                # Show attachment metadata (from the fetched envelope) even before download.
+                atts = em.get("attachments") or []
+                if atts:
+                    st.markdown("**📎 Attachments in this email:**")
+                    for a in atts:
+                        nm = a.get("filename", "?") if isinstance(a, dict) else str(a)
+                        sz = a.get("size", 0) if isinstance(a, dict) else 0
+                        st.caption(f"• {nm} ({(sz / 1024):.1f} KB)" if sz else f"• {nm}")
+                    if em["source"] == "outlook":
+                        if st.button("📥 Download attachments to ~/Downloads", key=f"dl_att_{idx}"):
+                            paths = download_outlook_attachments(em["id"])
+                            st.session_state.inbox_attachments[em["id"]] = paths
+                            if paths:
+                                st.success(f"✅ Downloaded {len(paths)} file(s):")
+                                for p in paths:
+                                    st.caption(f"• {os.path.basename(p)}")
+                            else:
+                                st.warning("No files were downloaded (attachments may be inline images only).")
+
+                if em["id"] in st.session_state.inbox_attachments and not atts:
                     st.markdown("**📎 Downloaded to `~/Downloads`:**")
                     for p in st.session_state.inbox_attachments[em["id"]]:
                         st.caption(f"• {os.path.basename(p)}")
@@ -692,8 +715,14 @@ elif page == "⚙️ Settings":
         c1, c2 = st.columns(2)
         depot_name   = c1.text_input("Depot Name", value=config.get("depot_name", ""))
         manager_name = c2.text_input("Manager Name", value=config.get("manager_name", ""))
+        c1, c2 = st.columns(2)
+        manager_phone = c1.text_input(
+            "Manager Phone (for 5 PM digest)",
+            value=config.get("manager_phone", ""),
+            help="Egyptian mobile format e.g. 01012345678. Leave empty to disable the daily end-of-day digest.",
+        )
+        whatsapp_group = c2.text_input("WhatsApp Group Name", value=config.get("whatsapp_group_name", ""))
         reminder_days = st.number_input("Reminder Days Before", 1, 7, value=int(config.get("reminder_days_before", 1)))
-        whatsapp_group = st.text_input("WhatsApp Group Name", value=config.get("whatsapp_group_name", ""))
 
         st.subheader("AI (Anthropic)")
         api_key = st.text_input("Anthropic API Key", value=config.get("anthropic_api_key", ""), type="password")
@@ -710,6 +739,7 @@ elif page == "⚙️ Settings":
             config.update({
                 "depot_name": depot_name,
                 "manager_name": manager_name,
+                "manager_phone": manager_phone,
                 "reminder_days_before": reminder_days,
                 "whatsapp_group_name": whatsapp_group,
                 "anthropic_api_key": api_key,

@@ -20,6 +20,40 @@ def _com_init():
         pass
 
 
+def _extract_body(msg) -> str:
+    """
+    Return the readable body of an Outlook COM message. Falls back from plain
+    Body to HTMLBody (stripped of tags) — many mails are HTML-only and return
+    empty string on `.Body`.
+    """
+    import re as _re
+    from html import unescape
+    plain = ""
+    try:
+        plain = (msg.Body or "").strip()
+    except Exception:
+        plain = ""
+    if plain:
+        return plain
+    try:
+        html = (msg.HTMLBody or "").strip()
+    except Exception:
+        html = ""
+    if not html:
+        return ""
+    # Strip HTML — good enough for reading. Remove script/style whole, then tags,
+    # then collapse whitespace.
+    html = _re.sub(r"<script[^>]*>.*?</script>", " ", html, flags=_re.I | _re.S)
+    html = _re.sub(r"<style[^>]*>.*?</style>", " ", html, flags=_re.I | _re.S)
+    html = _re.sub(r"<br\s*/?>", "\n", html, flags=_re.I)
+    html = _re.sub(r"</p>", "\n", html, flags=_re.I)
+    html = _re.sub(r"<[^>]+>", " ", html)
+    text = unescape(html)
+    text = _re.sub(r"[ \t\xa0]+", " ", text)
+    text = _re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
+    return text.strip()
+
+
 def read_outlook_unread(days_back: int = 2) -> list:
     """
     Read unread emails from Outlook Desktop using pywin32.
@@ -63,7 +97,7 @@ def read_outlook_unread(days_back: int = 2) -> list:
                     "from_email": getattr(msg, "SenderEmailAddress", "") or "",
                     "to": getattr(msg, "To", "") or "",
                     "subject": msg.Subject or "",
-                    "body": (msg.Body or "")[:5000],  # limit body size
+                    "body": _extract_body(msg)[:5000],  # falls back to HTMLBody
                     "received": received.isoformat(),
                     "unread": True,
                     "has_attachments": len(attachments) > 0,
@@ -142,7 +176,9 @@ def read_autoway_unread(days_back: int = 2) -> list:
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.connect_over_cdp("http://localhost:9222")
+            # Use 127.0.0.1 (IPv4) explicitly — "localhost" on Windows may resolve
+            # to ::1 first and Chrome CDP only listens on IPv4.
+            browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
             contexts = browser.contexts
             if not contexts:
                 return [{"error": "No Chrome context found. Open Chrome first."}]

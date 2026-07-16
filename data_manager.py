@@ -43,6 +43,7 @@ class DataManager:
         default = {
             "depot_name": "Cairo Metro Line 1 Depot",
             "manager_name": "Depot Manager",
+            "manager_phone": "",  # for the 5 PM personal digest
             "reminder_days_before": 1,
             "whatsapp_group_name": "Line 1 Management",
             "webmail": {

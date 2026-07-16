@@ -56,7 +56,7 @@ def write_status(**kwargs) -> None:
 
 def chrome_cdp_up() -> bool:
     try:
-        urllib.request.urlopen(f"http://localhost:{CDP_PORT}/json/version", timeout=2).read()
+        urllib.request.urlopen(f"http://127.0.0.1:{CDP_PORT}/json/version", timeout=2).read()
         return True
     except Exception:
         return False
@@ -234,7 +234,7 @@ def main() -> None:
     launch_chrome()
 
     with sync_playwright() as p:
-        browser = p.chromium.connect_over_cdp(f"http://localhost:{CDP_PORT}")
+        browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{CDP_PORT}")
         if not browser.contexts:
             log("ERROR: Chrome has no contexts (unexpected)")
             write_status(state="error", error="no chrome context")
@@ -248,6 +248,27 @@ def main() -> None:
         seen: set = set()
         while True:
             try:
+                # Re-attach if the user closed Chrome (or the whole page).
+                # Symptoms: page.url raises, or CDP endpoint is gone.
+                need_reattach = False
+                try:
+                    _ = page.url  # touch the page — raises if it was closed
+                except Exception:
+                    need_reattach = True
+
+                if need_reattach or not chrome_cdp_up():
+                    log("Chrome/page gone — re-launching and re-attaching")
+                    launch_chrome()
+                    try:
+                        browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{CDP_PORT}")
+                        if browser.contexts:
+                            ctx = browser.contexts[0]
+                            page = find_autoway_page(ctx, cfg)
+                            logged_in = _is_logged_in(page.url)
+                            envelope_clicked = False
+                    except Exception as e:
+                        log(f"re-attach failed: {e}")
+
                 if not logged_in:
                     try:
                         if _is_logged_in(page.url):
