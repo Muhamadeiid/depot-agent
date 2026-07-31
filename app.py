@@ -598,31 +598,122 @@ elif page == "📅 Schedule Grid":
         )
         st.stop()
 
-    # Build dataframe
-    rows = {}
-    for train in trains:
-        tid = train["id"]
-        rows[f"Train {tid}"] = {}
-        for day in range(1, days_in_month + 1):
-            d = f"{year_month}-{day:02d}"
-            rows[f"Train {tid}"][day] = month_data.get(d, {}).get(tid, "")
+    train_order = dm.get_train_order()  # manager's preferred column order
 
-    df = pd.DataFrame(rows).T
-    df.columns = [str(d) for d in range(1, days_in_month + 1)]
+    # ── Build the layout DataFrame (rows = days, cols = No/Date/D/trains/summary) ──
+    rows_list = []
+    for day in range(1, days_in_month + 1):
+        d_iso = f"{year_month}-{day:02d}"
+        dt = date(sel_year, sel_month, day)
+        entries = month_data.get(d_iso, {})
+        meta = dm.get_schedule_meta(d_iso)
+        row = {
+            "No":   day,
+            "Date": dt.strftime("%d/%b/%Y"),
+            "D":    dt.strftime("%a"),
+        }
+        for tid in train_order:
+            row[tid] = entries.get(tid, "") or ""
+        row["K6"]     = meta.get("K6", "")
+        row["K5"]     = meta.get("K5", "")
+        row["C_col"]  = meta.get("C", "")
+        row["K19"]    = meta.get("K19", "")
+        row["Remark"] = meta.get("remark", "")
+        rows_list.append(row)
+    df = pd.DataFrame(rows_list)
 
     # Legend
-    st.markdown("**Legend:** " + "  ".join(f'<span style="background:{c};color:white;padding:2px 6px;border-radius:3px;font-size:11px">{k}</span>' for k, c in CODE_COLORS.items()), unsafe_allow_html=True)
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(
+        "**Legend:** " + "  ".join(
+            f'<span style="background:{c};color:white;padding:2px 8px;border-radius:3px;font-size:11px;margin-right:4px">{k}</span>'
+            for k, c in CODE_COLORS.items()
+        ) + '  <span style="background:#A6A6A6;color:white;padding:2px 8px;border-radius:3px;font-size:11px">Fri</span>',
+        unsafe_allow_html=True,
+    )
+    st.caption("Coloured preview (read-only). Scroll down for the inline editor.")
 
-    # Display grid — apply color styling
-    def color_cell(val):
-        if not val:
-            return ""
-        color = CODE_COLORS.get(val, "#333")
-        return f"background-color:{color};color:white;font-weight:bold;text-align:center"
+    # ── Coloured read-only preview (matches the Excel look) ─────────────
+    def _cell_style(val, col_name, dow):
+        style = "text-align:center;"
+        if dow == "Fri":
+            style += "background:#A6A6A6;"
+        if col_name in train_order and val:
+            color = CODE_COLORS.get(str(val).strip(), "")
+            if color:
+                style = f"background:{color};color:white;font-weight:bold;text-align:center;"
+        return style
 
-    styled = df.style.map(color_cell)
-    st.dataframe(styled, use_container_width=True, height=min(50 + len(trains) * 35, 700))
+    def _apply_styles(df_in):
+        styles = pd.DataFrame("", index=df_in.index, columns=df_in.columns)
+        for i, r in df_in.iterrows():
+            dow = r["D"]
+            for col in df_in.columns:
+                styles.at[i, col] = _cell_style(r[col], col, dow)
+        return styles
+
+    display_df = df.rename(columns={"C_col": "C"})
+    styled = display_df.style.apply(_apply_styles, axis=None)
+    st.dataframe(styled, hide_index=True, use_container_width=True,
+                 height=min(50 + days_in_month * 32, 850))
+
+    # ── Inline editor ────────────────────────────────────────────────────
+    with st.expander("✏️ Edit the schedule inline", expanded=False):
+        st.caption(
+            "Click any cell to edit. Train cells show a dropdown of valid codes; "
+            "K6/K5/C/K19/Remark accept free text. Click **Save Changes** to persist."
+        )
+        valid_codes = [""] + list(MAINTENANCE_TYPES.keys())
+        col_cfg = {
+            "No":     st.column_config.NumberColumn("No", disabled=True, width="small"),
+            "Date":   st.column_config.TextColumn("Date", disabled=True, width="medium"),
+            "D":      st.column_config.TextColumn("D", disabled=True, width="small"),
+            "K6":     st.column_config.TextColumn("K6", width="small"),
+            "K5":     st.column_config.TextColumn("K5", width="small"),
+            "C_col":  st.column_config.TextColumn("C", width="small"),
+            "K19":    st.column_config.TextColumn("K19", width="small"),
+            "Remark": st.column_config.TextColumn("Remark", width="medium"),
+        }
+        for tid in train_order:
+            col_cfg[tid] = st.column_config.SelectboxColumn(
+                tid, options=valid_codes, width="small"
+            )
+        col_order = ["No", "Date", "D"] + train_order + ["K6", "K5", "C_col", "K19", "Remark"]
+
+        edited = st.data_editor(
+            df,
+            column_config=col_cfg,
+            column_order=col_order,
+            hide_index=True,
+            use_container_width=True,
+            num_rows="fixed",
+            height=min(50 + days_in_month * 35, 800),
+            key=f"grid_editor_{year_month}",
+        )
+
+        if st.button("💾 Save Changes", type="primary", key=f"save_grid_{year_month}"):
+            changes = 0
+            for _, row in edited.iterrows():
+                day = int(row["No"])
+                d_iso = f"{year_month}-{day:02d}"
+                current = dm.get_month_schedule(year_month).get(d_iso, {})
+                for tid in train_order:
+                    new_code = str(row[tid] or "").strip().upper()
+                    old_code = current.get(tid, "")
+                    if new_code != old_code:
+                        if new_code:
+                            dm.set_schedule_entry(d_iso, tid, new_code)
+                        else:
+                            dm.remove_schedule_entry(d_iso, tid)
+                        changes += 1
+                dm.set_schedule_meta(d_iso, {
+                    "K6":     str(row["K6"] or "").strip(),
+                    "K5":     str(row["K5"] or "").strip(),
+                    "C":      str(row["C_col"] or "").strip(),
+                    "K19":    str(row["K19"] or "").strip(),
+                    "remark": str(row["Remark"] or "").strip(),
+                })
+            st.success(f"✅ Saved. {changes} schedule cell(s) changed.")
+            st.rerun()
 
     st.divider()
 

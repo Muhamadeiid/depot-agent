@@ -231,6 +231,39 @@ class DataManager:
                 del grid[date_str]
             _save_json(self._schedule_path(), grid)
 
+    # ── Schedule per-day metadata (K6, K5, C, K19, remark) ──────────────
+    def _schedule_meta_path(self):
+        return os.path.join(DATA_DIR, "schedule_meta.json")
+
+    def get_schedule_meta(self, date_str: str) -> dict:
+        return _load_json(self._schedule_meta_path(), {}).get(date_str, {})
+
+    def set_schedule_meta(self, date_str: str, meta: dict):
+        all_meta = _load_json(self._schedule_meta_path(), {})
+        cleaned = {k: v for k, v in meta.items() if v not in (None, "")}
+        if cleaned:
+            all_meta[date_str] = cleaned
+        elif date_str in all_meta:
+            del all_meta[date_str]
+        _save_json(self._schedule_meta_path(), all_meta)
+
+    def get_train_order(self) -> list:
+        """Return the manager's preferred train column order for the schedule grid.
+        Falls back to sorted train IDs if not configured.
+        """
+        cfg = self.load_config()
+        order = cfg.get("schedule_train_order") or []
+        train_ids = {t["id"] for t in self.get_trains()}
+        # Keep configured order that still exists; append any new trains at the end.
+        ordered = [tid for tid in order if tid in train_ids]
+        ordered += [tid for tid in sorted(train_ids) if tid not in ordered]
+        return ordered
+
+    def set_train_order(self, order: list):
+        cfg = self.load_config()
+        cfg["schedule_train_order"] = list(order)
+        self.save_config(cfg)
+
     def get_tomorrows_maintenance(self) -> list:
         tomorrow = (date.today() + timedelta(days=1)).isoformat()
         grid = self.get_schedule_grid()
