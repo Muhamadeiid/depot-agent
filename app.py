@@ -51,15 +51,19 @@ st.sidebar.caption(f"Manager: {config.get('manager_name','')}")
 
 # ── Code colours ──────────────────────────────────────────────────────────────
 CODE_COLORS = {
-    "A":   "#1976D2",
-    "B1":  "#F57C00",
-    "B2":  "#E65100",
-    "B3":  "#BF360C",
-    "C":   "#C62828",
-    "A+C": "#6A1B9A",
-    "G":   "#0288D1",
-    "9Y":  "#757575",
+    "A":   "#FFEB3B",   # yellow
+    "B1":  "#8BC34A",   # green
+    "B2":  "#8BC34A",   # green
+    "B3":  "#8BC34A",   # green
+    "C":   "",          # no fill — plain black text, matches the source sheet
+    "A+C": "#9C27B0",   # purple
+    "G":   "#2196F3",   # blue
+    "9Y":  "#F44336",   # red
 }
+
+# Codes whose fill is dark enough that white text reads best. Others (A yellow,
+# B* green, empty-fill C) look better with black text.
+CODE_WHITE_TEXT = {"9Y", "G", "A+C"}
 
 
 def _system_strip():
@@ -662,22 +666,31 @@ elif page == "📅 Schedule Grid":
     header_cols = ["No", "Date", "D"] + train_order + ["K6", "K5", "C", "K19", "Remark"]
 
     def _cell_html(col_name: str, val, dow: str) -> str:
-        css_parts = ["text-align:center", "padding:2px 4px", "border:1px solid #666",
-                     "font-size:12px", "white-space:nowrap"]
+        base = ["text-align:center", "padding:2px 4px", "border:1px solid #888",
+                "font-size:12px", "white-space:nowrap", "color:#111"]
         text = "" if val in (None, "") else str(val)
-        if dow == "Fri":
-            css_parts.append("background:#A6A6A6")
-            css_parts.append("color:#222")
-        if col_name in train_order_set and text.strip() and text.strip() in CODE_COLORS:
-            code = text.strip()
-            fg = "black" if code == "A" else "white"
-            css_parts = [
-                f"background:{CODE_COLORS[code]}", f"color:{fg}",
-                "font-weight:bold", "text-align:center",
-                "padding:2px 4px", "border:1px solid #666",
-                "font-size:12px", "white-space:nowrap",
+        code = text.strip() if col_name in train_order_set else ""
+
+        if code and code in CODE_COLORS:
+            bg = CODE_COLORS[code]
+            fg = "#FFF" if code in CODE_WHITE_TEXT else "#111"
+            css = [
+                f"background:{bg}" if bg else "",
+                f"color:{fg}",
+                "font-weight:bold",
+                "text-align:center",
+                "padding:2px 4px",
+                "border:1px solid #888",
+                "font-size:12px",
+                "white-space:nowrap",
             ]
-        return f'<td style="{";".join(css_parts)}">{text}</td>'
+        elif dow == "Fri":
+            css = base + ["background:#A6A6A6"]
+        else:
+            css = base + ["background:#FFFFFF"]
+
+        css = [c for c in css if c]
+        return f'<td style="{";".join(css)}">{text}</td>'
 
     def _header_cell(name: str, width_hint: str = "") -> str:
         w = f" width:{width_hint};" if width_hint else ""
