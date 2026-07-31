@@ -22,12 +22,13 @@ config.json
 *.pem
 
 # --- Real depot data: never commit ---
-data/*.json
-data/*.jsonl
-data/*.log
-data/*.md
+data/**/*.json
+data/**/*.jsonl
+data/**/*.log
+data/**/*.md
 data/chrome_profile/
 data/attachments/
+data/logs/
 
 # Boot report and monitor state (contain URLs / status)
 boot_report.md

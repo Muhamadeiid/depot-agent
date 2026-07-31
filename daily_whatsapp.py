@@ -107,4 +107,8 @@ def send_whatsapp_reminder():
 
 
 if __name__ == "__main__":
-    send_whatsapp_reminder()
+    from runlog import already_ran_today, mark_ran_today
+    if already_ran_today("daily_whatsapp"):
+        console.print("[dim]daily_whatsapp already ran today — skipping (idempotent guard).[/dim]")
+    elif send_whatsapp_reminder():
+        mark_ran_today("daily_whatsapp")

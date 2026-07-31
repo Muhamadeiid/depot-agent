@@ -166,6 +166,14 @@ def build_digest(dm: DataManager, today: date | None = None) -> str:
 
 
 def main() -> int:
+    from runlog import already_ran_today, mark_ran_today
+    if already_ran_today("end_of_day_digest"):
+        print(
+            f"[{datetime.now().isoformat(timespec='seconds')}] "
+            "end_of_day_digest already ran today — skipping (idempotent guard)."
+        )
+        return 0
+
     dm = DataManager()
     cfg = dm.load_config()
 
@@ -187,6 +195,7 @@ def main() -> int:
     ok = send_via_whatsapp(phone, digest)
     if ok:
         print("Digest sent ✅")
+        mark_ran_today("end_of_day_digest")
         return 0
     print("Digest send FAILED")
     return 1
