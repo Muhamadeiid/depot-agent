@@ -127,7 +127,7 @@ class DataManager:
             "assigned_to_ids": assigned_to_ids,
             "due_date": due_date,
             "priority": priority,
-            "status": "Pending",
+            "status": "pending",
             "train_id": train_id,
             "recipient": recipient,
             "remind_days_before": offsets,

@@ -8,6 +8,23 @@ import sys
 from data_manager import DataManager, MAINTENANCE_TYPES
 from agent import DepotAgent
 
+
+def _spawn_notify(task_id: str) -> None:
+    """Fire-and-forget subprocess that sends the WhatsApp notification for a
+    single task. Running in a subprocess keeps the Streamlit UI responsive
+    while pyautogui drives WhatsApp Desktop (which takes 7–10s per recipient).
+    """
+    project_dir = os.path.dirname(os.path.abspath(__file__))
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    subprocess.Popen(
+        [sys.executable, "-c",
+         f"from daily_reminders import notify_task_now; notify_task_now({task_id!r})"],
+        cwd=project_dir,
+        env=env,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+
 st.set_page_config(
     page_title="Cairo Metro Line 1 — Depot Agent",
     page_icon="🚇",
@@ -425,6 +442,9 @@ elif page == "📋 Tasks":
                 if new_status != t.get("status"):
                     dm.update_task(t["id"], status=new_status)
                     st.rerun()
+                if c3.button("🔔 Notify Now", key=f"notify_task_{t['id']}"):
+                    _spawn_notify(t["id"])
+                    st.toast(f"⏳ Sending notifications for task {t['id']}…", icon="📤")
                 if c3.button("🗑️ Delete", key=f"del_task_{t['id']}"):
                     dm.delete_task(t["id"])
                     st.rerun()
@@ -467,12 +487,24 @@ elif page == "📋 Tasks":
             )
             remind_offsets = sorted({reminder_options[l] for l in picked_labels}) or [0]
             assigned = st.multiselect("Assign To", options=[e["id"] for e in employees], format_func=lambda x: emp_map.get(x, x))
+            notify_now = st.checkbox(
+                "🔔 Send WhatsApp notification now to everyone assigned",
+                value=True,
+                help="Sends a WhatsApp message immediately to every assigned "
+                     "employee (using their phone from the Employees tab) plus the "
+                     "manual Notify field. WhatsApp Desktop must be open and logged in."
+            )
             if st.form_submit_button("Create Task", type="primary"):
                 if title:
-                    dm.add_task(title, desc, assigned, due_date.isoformat(), priority,
+                    new_task = dm.add_task(title, desc, assigned, due_date.isoformat(), priority,
                                 train_id=train_id, recipient=recipient,
                                 remind_days_before=remind_offsets)
-                    st.success("✅ Task created!")
+                    if notify_now:
+                        _spawn_notify(new_task["id"])
+                        st.success("✅ Task created — sending WhatsApp notifications now…")
+                        st.info("⚠️ WhatsApp Desktop must be open. Sending takes ~10s per recipient.")
+                    else:
+                        st.success("✅ Task created!")
                     st.rerun()
                 else:
                     st.error("Title is required.")
