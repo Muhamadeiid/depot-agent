@@ -155,7 +155,7 @@ TOOLS = [
             "properties": {
                 "date_str":         {"type": "string", "description": "YYYY-MM-DD"},
                 "train_id":         {"type": "string"},
-                "maintenance_code": {"type": "string", "enum": ["A", "B1", "B2", "B3", "C", "A+C", "9Y"]},
+                "maintenance_code": {"type": "string", "enum": ["A", "B1", "B2", "B3", "C", "A+C", "G", "9Y"]},
             },
             "required": ["date_str", "train_id", "maintenance_code"],
         },

@@ -14,6 +14,7 @@ MAINTENANCE_TYPES = {
     "B3": "Type B3 Maintenance",
     "C": "Type C Service",
     "A+C": "Combined A+C Service",
+    "G": "Type G Maintenance",
     "9Y": "9-Year Overhaul"
 }
 
