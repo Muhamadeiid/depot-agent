@@ -581,9 +581,32 @@ elif page == "📅 Schedule Grid":
     st.title("📅 Maintenance Schedule Grid")
 
     today = date.today()
+
+    # Smart default: pick the month with actual schedule data closest to today.
+    # Priority: today's month if it has entries → next month if it has entries →
+    # today's month (empty).
+    all_dates = set(dm.get_schedule_grid().keys())
+
+    def _month_has_data(y: int, m: int) -> bool:
+        return any(d.startswith(f"{y}-{m:02d}") for d in all_dates)
+
+    if _month_has_data(today.year, today.month):
+        default_y, default_m = today.year, today.month
+    else:
+        nxt = today.replace(day=1) + timedelta(days=32)
+        nxt = nxt.replace(day=1)
+        if _month_has_data(nxt.year, nxt.month):
+            default_y, default_m = nxt.year, nxt.month
+        else:
+            default_y, default_m = today.year, today.month
+
+    year_options = [today.year, today.year + 1]
+    if default_y not in year_options:
+        year_options.insert(0, default_y)
+
     c1, c2, c3 = st.columns([2, 2, 4])
-    sel_year  = c1.selectbox("Year",  [today.year, today.year + 1], index=0)
-    sel_month = c2.selectbox("Month", list(range(1, 13)), index=today.month - 1, format_func=lambda m: calendar.month_name[m])
+    sel_year  = c1.selectbox("Year",  year_options, index=year_options.index(default_y))
+    sel_month = c2.selectbox("Month", list(range(1, 13)), index=default_m - 1, format_func=lambda m: calendar.month_name[m])
     year_month = f"{sel_year}-{sel_month:02d}"
 
     month_data = dm.get_month_schedule(year_month)
@@ -632,29 +655,62 @@ elif page == "📅 Schedule Grid":
     )
     st.caption("Coloured preview (read-only). Scroll down for the inline editor.")
 
-    # ── Coloured read-only preview (matches the Excel look) ─────────────
-    def _cell_style(val, col_name, dow):
-        style = "text-align:center;"
+    # ── Coloured read-only preview (raw HTML — Streamlit's canvas grid
+    # doesn't reliably render per-cell background colours, so we emit our
+    # own table so the look matches the manager's printed sheet) ────────
+    train_order_set = set(train_order)
+    header_cols = ["No", "Date", "D"] + train_order + ["K6", "K5", "C", "K19", "Remark"]
+
+    def _cell_html(col_name: str, val, dow: str) -> str:
+        css_parts = ["text-align:center", "padding:2px 4px", "border:1px solid #666",
+                     "font-size:12px", "white-space:nowrap"]
+        text = "" if val in (None, "") else str(val)
         if dow == "Fri":
-            style += "background:#A6A6A6;"
-        if col_name in train_order and val:
-            color = CODE_COLORS.get(str(val).strip(), "")
-            if color:
-                style = f"background:{color};color:white;font-weight:bold;text-align:center;"
-        return style
+            css_parts.append("background:#A6A6A6")
+            css_parts.append("color:#222")
+        if col_name in train_order_set and text.strip() and text.strip() in CODE_COLORS:
+            code = text.strip()
+            fg = "black" if code == "A" else "white"
+            css_parts = [
+                f"background:{CODE_COLORS[code]}", f"color:{fg}",
+                "font-weight:bold", "text-align:center",
+                "padding:2px 4px", "border:1px solid #666",
+                "font-size:12px", "white-space:nowrap",
+            ]
+        return f'<td style="{";".join(css_parts)}">{text}</td>'
 
-    def _apply_styles(df_in):
-        styles = pd.DataFrame("", index=df_in.index, columns=df_in.columns)
-        for i, r in df_in.iterrows():
-            dow = r["D"]
-            for col in df_in.columns:
-                styles.at[i, col] = _cell_style(r[col], col, dow)
-        return styles
+    def _header_cell(name: str, width_hint: str = "") -> str:
+        w = f" width:{width_hint};" if width_hint else ""
+        return (
+            f'<th style="background:#2c3e50;color:white;padding:4px 6px;'
+            f'border:1px solid #666;font-size:12px;text-align:center;'
+            f'position:sticky;top:0;{w}">{name}</th>'
+        )
 
-    display_df = df.rename(columns={"C_col": "C"})
-    styled = display_df.style.apply(_apply_styles, axis=None)
-    st.dataframe(styled, hide_index=True, use_container_width=True,
-                 height=min(50 + days_in_month * 32, 850))
+    header_html = "<tr>" + "".join(
+        _header_cell(c, "48px" if c in train_order_set or c in {"K6","K5","C","K19"}
+                     else ("32px" if c in {"No","D"} else ("100px" if c=="Date" else "160px" if c=="Remark" else "")))
+        for c in header_cols
+    ) + "</tr>"
+
+    body_html = ""
+    for _, row in df.iterrows():
+        dow = row["D"]
+        cells_html = "".join(
+            _cell_html(col, row["C_col"] if col == "C" else row[col], dow)
+            for col in header_cols
+        )
+        body_html += f"<tr>{cells_html}</tr>"
+
+    table_html = (
+        '<div style="overflow-x:auto;max-height:800px;overflow-y:auto;'
+        'border:1px solid #444;border-radius:4px">'
+        f'<table style="border-collapse:collapse;width:auto;">'
+        f'<thead>{header_html}</thead>'
+        f'<tbody>{body_html}</tbody>'
+        '</table></div>'
+    )
+    st.markdown(table_html, unsafe_allow_html=True)
 
     # ── Inline editor ────────────────────────────────────────────────────
     with st.expander("✏️ Edit the schedule inline", expanded=False):
