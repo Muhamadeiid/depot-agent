@@ -522,9 +522,37 @@ elif page == "🚂 Trains & Assignments":
 
     st.caption("Assign employees to each train. These assignments are used in WhatsApp reminders.")
 
-    if not employees:
-        st.warning("⚠️ Add employees first in the Employees tab.")
+    # ── Add / Manage trains ─────────────────────────────────────────────────
+    with st.expander("➕ Manage Trains", expanded=not trains):
+        c1, c2, c3 = st.columns([1, 2, 1])
+        if c1.button(f"🚂 Add all 20 Line 1 trains", type="primary", disabled=len(trains) >= 20):
+            added = dm.seed_line1_trains()
+            st.success(f"Added {added} train(s). Total now: {len(dm.get_trains())}.")
+            st.rerun()
+
+        with c2.form("add_single_train"):
+            tc1, tc2, tc3 = st.columns([1, 2, 1])
+            new_tid = tc1.text_input("Train ID", placeholder="e.g. 21")
+            new_name = tc2.text_input("Name (optional)", placeholder="Train 21")
+            if tc3.form_submit_button("Add"):
+                if new_tid.strip():
+                    t = dm.add_train(new_tid, new_name)
+                    st.success(f"Added Train {t['id']}.")
+                    st.rerun()
+
+        if trains:
+            del_tid = c3.selectbox("Delete", [""] + [t["id"] for t in trains], format_func=lambda x: f"Train {x}" if x else "— pick —", key="del_train_sel")
+            if del_tid and c3.button("🗑️ Remove", key="del_train_btn"):
+                dm.delete_train(del_tid)
+                st.success(f"Removed Train {del_tid}.")
+                st.rerun()
+
+    if not trains:
+        st.info("No trains yet. Click **Add all 20 Line 1 trains** above to get started.")
+    elif not employees:
+        st.warning("⚠️ Add employees first in the Employees tab, then come back here to assign them.")
     else:
+        st.caption(f"**{len(trains)} train(s)** · **{len(employees)} employee(s)** available")
         cols = st.columns(4)
         for i, train in enumerate(trains):
             tid = train["id"]
@@ -560,6 +588,14 @@ elif page == "📅 Schedule Grid":
     month_data = dm.get_month_schedule(year_month)
     days_in_month = calendar.monthrange(sel_year, sel_month)[1]
     trains = dm.get_trains()
+
+    if not trains:
+        st.warning(
+            "⚠️ No trains yet. Add them in the **🚂 Trains & Assignments** tab "
+            "(or use the *Add all Line 1 trains* button there) before you can "
+            "build a schedule grid."
+        )
+        st.stop()
 
     # Build dataframe
     rows = {}

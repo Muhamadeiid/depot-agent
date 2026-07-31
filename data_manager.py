@@ -165,6 +165,37 @@ class DataManager:
     def get_trains(self) -> list:
         return _load_json(self._trains_path(), [])
 
+    def add_train(self, train_id: str, name: str = "") -> dict:
+        """Add a train. train_id is zero-padded to 2 digits ('7' -> '07')."""
+        tid = str(train_id).strip().zfill(2)
+        trains = self.get_trains()
+        if any(t["id"] == tid for t in trains):
+            return next(t for t in trains if t["id"] == tid)
+        train = {"id": tid, "name": name.strip() or f"Train {tid}"}
+        trains.append(train)
+        _save_json(self._trains_path(), trains)
+        return train
+
+    def delete_train(self, train_id: str) -> bool:
+        tid = str(train_id).strip().zfill(2)
+        trains = self.get_trains()
+        new_list = [t for t in trains if t["id"] != tid]
+        if len(new_list) == len(trains):
+            return False
+        _save_json(self._trains_path(), new_list)
+        return True
+
+    def seed_line1_trains(self) -> int:
+        """Seed the 20 standard Cairo Metro Line 1 trains (01..20). Returns count added."""
+        existing = {t["id"] for t in self.get_trains()}
+        added = 0
+        for n in range(1, 21):
+            tid = f"{n:02d}"
+            if tid not in existing:
+                self.add_train(tid)
+                added += 1
+        return added
+
     def get_train_assignments(self) -> dict:
         return _load_json(self._assignments_path(), {})
 
