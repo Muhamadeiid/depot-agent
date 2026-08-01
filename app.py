@@ -672,10 +672,10 @@ elif page == "📅 Schedule Grid":
         code = text.strip() if col_name in train_order_set else ""
 
         if code and code in CODE_COLORS:
-            bg = CODE_COLORS[code]
+            bg = CODE_COLORS[code] or "#FFFFFF"  # codes with no fill (e.g. C) stay white
             fg = "#FFF" if code in CODE_WHITE_TEXT else "#111"
             css = [
-                f"background:{bg}" if bg else "",
+                f"background:{bg}",
                 f"color:{fg}",
                 "font-weight:bold",
                 "text-align:center",
