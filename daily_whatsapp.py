@@ -13,17 +13,21 @@ from rich.console import Console
 console = Console()
 
 
-def build_message(maintenance_list: list, config: dict) -> str:
+def build_message(maintenance_list: list, config: dict, remark: str = "") -> str:
     tomorrow = (date.today() + timedelta(days=1)).strftime("%A, %d %B %Y")
     depot = config.get("depot_name", "Cairo Metro Line 1 Depot")
     manager = config.get("manager_name", "Depot Manager")
+    remark = (remark or "").strip()
 
     if not maintenance_list:
-        return (
-            f"🚇 *{depot}*\n"
-            f"📅 Tomorrow ({tomorrow})\n"
-            f"✅ No maintenance scheduled for tomorrow."
-        )
+        lines = [
+            f"🚇 *{depot}*",
+            f"📅 Tomorrow ({tomorrow})",
+            "✅ No maintenance scheduled for tomorrow.",
+        ]
+        if remark:
+            lines += ["", f"📝 *Note:* {remark}"]
+        return "\n".join(lines)
 
     lines = [
         f"🚇 *{depot} — Daily Maintenance Reminder*",
@@ -34,10 +38,9 @@ def build_message(maintenance_list: list, config: dict) -> str:
     for item in maintenance_list:
         code = item["code"]
         code_name = item["code_name"]
-        emp_names = ", ".join(e["name"] for e in item.get("employees", []))
         lines.append(f"• *Train {item['train_id']}* — {code} ({code_name})")
-        if emp_names:
-            lines.append(f"  👷 {emp_names}")
+    if remark:
+        lines += ["", f"📝 *Note:* {remark}"]
     lines += ["", "✅ Please confirm readiness by EOD.", f"— {manager}"]
     return "\n".join(lines)
 
@@ -46,7 +49,11 @@ def send_whatsapp_reminder():
     dm = DataManager()
     config = dm.load_config()
     maintenance = dm.get_tomorrows_maintenance()
-    message = build_message(maintenance, config)
+    # Fetch tomorrow's per-day remark (K6/K5/etc. are counts, we only surface
+    # the manager's free-text 'remark' field — e.g. "TS 09 Night Test").
+    tomorrow_iso = (date.today() + timedelta(days=1)).isoformat()
+    remark = (dm.get_schedule_meta(tomorrow_iso) or {}).get("remark", "")
+    message = build_message(maintenance, config, remark=remark)
     group_name = config.get("whatsapp_group_name", "Line 1 Management")
 
     console.print(f"\n[bold blue]Cairo Metro — Daily WhatsApp Reminder[/bold blue]")
