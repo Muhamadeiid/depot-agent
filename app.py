@@ -669,6 +669,8 @@ elif page == "📅 Schedule Grid":
         base = ["text-align:center", "padding:2px 4px", "border:1px solid #888",
                 "font-size:12px", "white-space:nowrap", "color:#111"]
         text = "" if val in (None, "") else str(val)
+        if text.strip().lower() == "nan":
+            text = ""
         code = text.strip() if col_name in train_order_set else ""
 
         if code and code in CODE_COLORS:
@@ -758,15 +760,24 @@ elif page == "📅 Schedule Grid":
             height=min(50 + days_in_month * 35, 800),
             key=f"grid_editor_{year_month}",
         )
+        # Clearing a cell in st.data_editor stores NaN, not "". Normalise so
+        # downstream str(...) never yields the literal string "nan".
+        edited = edited.fillna("")
 
         if st.button("💾 Save Changes", type="primary", key=f"save_grid_{year_month}"):
+            def _s(v) -> str:
+                if v is None:
+                    return ""
+                s = str(v).strip()
+                return "" if s.lower() == "nan" else s
+
             changes = 0
             for _, row in edited.iterrows():
                 day = int(row["No"])
                 d_iso = f"{year_month}-{day:02d}"
                 current = dm.get_month_schedule(year_month).get(d_iso, {})
                 for tid in train_order:
-                    new_code = str(row[tid] or "").strip().upper()
+                    new_code = _s(row[tid]).upper()
                     old_code = current.get(tid, "")
                     if new_code != old_code:
                         if new_code:
@@ -775,11 +786,11 @@ elif page == "📅 Schedule Grid":
                             dm.remove_schedule_entry(d_iso, tid)
                         changes += 1
                 dm.set_schedule_meta(d_iso, {
-                    "K6":     str(row["K6"] or "").strip(),
-                    "K5":     str(row["K5"] or "").strip(),
-                    "C":      str(row["C_col"] or "").strip(),
-                    "K19":    str(row["K19"] or "").strip(),
-                    "remark": str(row["Remark"] or "").strip(),
+                    "K6":     _s(row["K6"]),
+                    "K5":     _s(row["K5"]),
+                    "C":      _s(row["C_col"]),
+                    "K19":    _s(row["K19"]),
+                    "remark": _s(row["Remark"]),
                 })
             st.success(f"✅ Saved. {changes} schedule cell(s) changed.")
             st.rerun()
