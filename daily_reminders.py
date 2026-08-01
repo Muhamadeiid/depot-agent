@@ -269,9 +269,21 @@ def status_is_pending(task: dict) -> bool:
 def is_due_for_reminder(task: dict, today: date) -> bool:
     if not status_is_pending(task):
         return False
-    if not task.get("recipient"):
-        return False
     if task.get("reminder_sent_for") == today.isoformat():
+        return False
+
+    # If the manager picked a specific send date, that overrides the
+    # due_date/offsets logic — the reminder fires only on that day.
+    send_on = (task.get("send_on") or "").strip()
+    if send_on:
+        try:
+            return datetime.fromisoformat(send_on).date() == today
+        except Exception:
+            return False
+
+    # Otherwise fall back to due_date + offsets. A missing recipient AND no
+    # assignees means there's no one to notify — skip.
+    if not task.get("recipient") and not task.get("assigned_to_ids"):
         return False
     try:
         due = datetime.fromisoformat(task["due_date"]).date()

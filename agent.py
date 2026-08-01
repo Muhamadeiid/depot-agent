@@ -126,6 +126,10 @@ TOOLS = [
                     "items": {"type": "integer"},
                     "description": "Days-before-due offsets to send WhatsApp reminders on. Defaults to [0] (same day as the task). Pass [0, 1] to send both same day AND one day before, etc.",
                 },
+                "send_on": {
+                    "type": "string",
+                    "description": "Optional YYYY-MM-DD. If set, the WhatsApp reminder fires on exactly this date at 08:05 and remind_days_before is ignored.",
+                },
             },
             "required": ["title"],
         },
@@ -262,6 +266,7 @@ class DepotAgent:
                 train_id=inputs.get("train_id", ""),
                 recipient=inputs.get("recipient", ""),
                 remind_days_before=inputs.get("remind_days_before", [0]),
+                send_on=inputs.get("send_on", ""),
             )
             return f"Task created: {task['title']} (ID: {task['id']})"
         elif name == "update_task_status":

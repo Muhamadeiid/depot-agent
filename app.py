@@ -423,6 +423,7 @@ elif page == "📋 Tasks":
                 c1.markdown(f"{priority_colors.get(t.get('priority','medium'),'🟡')} **{t['title']}**  \n`{t['id']}` · Due: {t.get('due_date','—')}{train_line}")
                 c1.caption(t.get("description",""))
                 rec = t.get("recipient", "")
+                send_on = (t.get("send_on") or "").strip()
                 rem = t.get("remind_days_before", [0])
                 if isinstance(rem, (list, tuple)):
                     rem_list = list(rem)
@@ -436,8 +437,11 @@ elif page == "📋 Tasks":
                     if n == 7:
                         return "1w before"
                     return f"{n}d before"
-                rem_str = ", ".join(_fmt_offset(n) for n in rem_list) if rem_list else "same day"
-                reminder_line = f"  \n🔔 Notify: {rec} ({rem_str})" if rec else ""
+                if send_on:
+                    when_str = f"📆 on {send_on}"
+                else:
+                    when_str = ", ".join(_fmt_offset(n) for n in rem_list) if rem_list else "same day"
+                reminder_line = f"  \n🔔 Notify: {rec or '(assignees)'} ({when_str})"
                 c2.markdown(f"👷 {assigned_names or '—'}  \nPriority: **{str(t.get('priority','medium')).upper()}**{reminder_line}")
                 new_status = c3.selectbox(
                     "Status", ["pending", "in_progress", "completed"],
@@ -477,6 +481,13 @@ elif page == "📋 Tasks":
             train_id = c3.selectbox("Train (optional)", train_options,
                                     format_func=lambda x: f"Train {x}" if x else "— none —")
             recipient = c4.text_input("Notify (phone e.g. 01012345678, or WhatsApp contact name)")
+            schedule_mode = st.radio(
+                "When should the WhatsApp reminder go out?",
+                ["Relative to due date", "On a specific date"],
+                horizontal=True,
+                help="Relative: pick offsets from the due date. "
+                     "Specific: pick one exact date to send on.",
+            )
             reminder_options = {
                 "Same day (day of the task)": 0,
                 "1 day before": 1,
@@ -484,13 +495,24 @@ elif page == "📋 Tasks":
                 "3 days before": 3,
                 "1 week before": 7,
             }
-            picked_labels = st.multiselect(
-                "When to send WhatsApp reminder",
-                list(reminder_options.keys()),
-                default=["Same day (day of the task)"],
-                help="Pick one or more. The reminder goes out at 08:00 on each selected day.",
-            )
-            remind_offsets = sorted({reminder_options[l] for l in picked_labels}) or [0]
+            remind_offsets: list[int] = []
+            send_on_date = ""
+            if schedule_mode == "Relative to due date":
+                picked_labels = st.multiselect(
+                    "When to send WhatsApp reminder",
+                    list(reminder_options.keys()),
+                    default=["Same day (day of the task)"],
+                    help="Pick one or more. The reminder goes out at 08:05 on each selected day.",
+                )
+                remind_offsets = sorted({reminder_options[l] for l in picked_labels}) or [0]
+            else:
+                send_on = st.date_input(
+                    "Send WhatsApp on this exact date",
+                    value=due_date,
+                    help="The reminder fires at 08:05 on this day, regardless of the due date.",
+                )
+                send_on_date = send_on.isoformat()
+
             assigned = st.multiselect("Assign To", options=[e["id"] for e in employees], format_func=lambda x: emp_map.get(x, x))
             notify_now = st.checkbox(
                 "🔔 Send WhatsApp notification now to everyone assigned",
@@ -503,13 +525,15 @@ elif page == "📋 Tasks":
                 if title:
                     new_task = dm.add_task(title, desc, assigned, due_date.isoformat(), priority,
                                 train_id=train_id, recipient=recipient,
-                                remind_days_before=remind_offsets)
+                                remind_days_before=remind_offsets or [0],
+                                send_on=send_on_date)
                     if notify_now:
                         _spawn_notify(new_task["id"])
                         st.success("✅ Task created — sending WhatsApp notifications now…")
                         st.info("⚠️ WhatsApp Desktop must be open. Sending takes ~10s per recipient.")
                     else:
-                        st.success("✅ Task created!")
+                        note = f" — scheduled for {send_on_date} at 08:05" if send_on_date else ""
+                        st.success(f"✅ Task created!{note}")
                     st.rerun()
                 else:
                     st.error("Title is required.")

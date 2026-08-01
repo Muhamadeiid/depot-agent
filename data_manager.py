@@ -113,9 +113,12 @@ class DataManager:
     def add_task(self, title: str, description: str, assigned_to_ids: list,
                  due_date: str, priority: str,
                  train_id: str = "", recipient: str = "",
-                 remind_days_before=0) -> dict:
+                 remind_days_before=0,
+                 send_on: str = "") -> dict:
         # remind_days_before accepts int (single day) or list[int] (multiple offsets).
         # 0 = same day as due_date, 1 = one day before, etc.
+        # send_on (optional YYYY-MM-DD): if set, the WhatsApp notification fires
+        # on exactly that date (at 08:05) regardless of due_date/offsets.
         if isinstance(remind_days_before, (list, tuple)):
             offsets = sorted({int(x) for x in remind_days_before})
         else:
@@ -132,6 +135,7 @@ class DataManager:
             "train_id": train_id,
             "recipient": recipient,
             "remind_days_before": offsets,
+            "send_on": (send_on or "").strip(),
             "reminder_sent_for": "",
             "created_at": datetime.now().isoformat()
         }
