@@ -857,14 +857,54 @@ elif page == "📅 Schedule Grid":
     )
     up = st.file_uploader("Pick a file", type=["xlsx", "xls", "csv"], key=f"schedule_upload_{year_month}")
     if up is not None:
+        raw = None
+        chosen_sheet = None
         try:
             if up.name.lower().endswith(".csv"):
                 raw = pd.read_csv(up, dtype=str).fillna("")
             else:
-                raw = pd.read_excel(up, dtype=str).fillna("")
+                # Read every sheet so we can pick the one that actually holds
+                # the schedule matrix — the file may lead with Instructions,
+                # a Codes reference, or the manager's original layout sheet.
+                sheets = pd.read_excel(up, dtype=str, sheet_name=None)
+                sheets = {name: df_.fillna("") for name, df_ in sheets.items()}
+
+                def _looks_like_schedule(df_: pd.DataFrame) -> bool:
+                    if df_.empty or df_.shape[1] < 3:
+                        return False
+                    cols_lower_ = {str(c).strip().lower() for c in df_.columns}
+                    # long format has the three named columns
+                    if {"date", "train_id", "code"}.issubset(cols_lower_):
+                        return True
+                    # matrix format: at least some numeric column headers 1..31
+                    numeric_cols = sum(1 for c in df_.columns if str(c).strip().isdigit())
+                    return numeric_cols >= 5
+
+                # Priority: a sheet whose name matches "schedule template" or
+                # just "schedule"; otherwise the first sheet that looks valid;
+                # otherwise the first sheet.
+                preferred_order = sorted(
+                    sheets.keys(),
+                    key=lambda n: (
+                        0 if "schedule template" in n.lower() else
+                        1 if "schedule" in n.lower() else
+                        2
+                    ),
+                )
+                for name in preferred_order:
+                    if _looks_like_schedule(sheets[name]):
+                        raw, chosen_sheet = sheets[name], name
+                        break
+                if raw is None:
+                    # Fall back to the first sheet so the user still sees errors
+                    first_name = next(iter(sheets))
+                    raw, chosen_sheet = sheets[first_name], first_name
         except Exception as e:
             st.error(f"Couldn't read file: {e}")
             raw = None
+
+        if chosen_sheet:
+            st.caption(f"Using sheet: **{chosen_sheet}**")
 
         if raw is not None and not raw.empty:
             valid_codes = set(MAINTENANCE_TYPES.keys())
